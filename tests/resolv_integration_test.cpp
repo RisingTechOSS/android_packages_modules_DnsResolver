@@ -3084,7 +3084,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Synthesize) {
     // Expect that there are two queries, one AAAA (which returns no records) and one A
     // (which returns 1.2.3.4).
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
-    EXPECT_EQ(ToString(result), "64:ff9b::102:304");
+    EXPECT_THAT(ToStrings(result), testing::ElementsAre("64:ff9b::102:304", "1.2.3.4"));
 
     // Stopping NAT64 prefix discovery disables synthesis.
     EXPECT_TRUE(mDnsClient.resolvService()->stopPrefix64Discovery(TEST_NETID).isOk());
@@ -3160,7 +3160,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64SynthesizeMultiAnswers) {
 
     // Synthesize AAAA if there's no AAAA answer and AF_UNSPEC is specified.
     EXPECT_THAT(ToStrings(result),
-                testing::ElementsAre("64:ff9b::102:304", "64:ff9b::808:808", "64:ff9b::5175:15ca"));
+                testing::ElementsAre("64:ff9b::102:304", "64:ff9b::808:808", "64:ff9b::5175:15ca",
+                                     "1.2.3.4", "8.8.8.8", "81.117.21.202"));
 }
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64Canonname) {
@@ -3193,10 +3194,10 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Canonname) {
             return fmt::format("family={}, flags={}", family, flags);
         }
     } testConfigs[]{
-        {AF_UNSPEC,            0, {"64:ff9b::102:304"}, nullptr},
-        {AF_UNSPEC, AI_CANONNAME, {"64:ff9b::102:304"}, "v4only.example.com"},
-        {AF_INET6,             0, {"64:ff9b::102:304"}, nullptr},
-        {AF_INET6,  AI_CANONNAME, {"64:ff9b::102:304"}, "v4only.example.com"},
+        {AF_UNSPEC,            0, {"64:ff9b::102:304", "1.2.3.4"}, nullptr},
+        {AF_UNSPEC, AI_CANONNAME, {"64:ff9b::102:304", "1.2.3.4"}, "v4only.example.com"},
+        {AF_INET6,             0, {"64:ff9b::102:304"}           , nullptr},
+        {AF_INET6,  AI_CANONNAME, {"64:ff9b::102:304"}           , "v4only.example.com"},
     };
     // clang-format on
 
@@ -3207,10 +3208,10 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64Canonname) {
                 .ai_family = config.family, .ai_flags = config.flags, .ai_socktype = SOCK_DGRAM};
         ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, &hints);
         ASSERT_TRUE(result != nullptr);
-        EXPECT_EQ(ToString(result), "64:ff9b::102:304");
-        const auto* ai = result.get();
-        ASSERT_TRUE(ai != nullptr);
-        EXPECT_STREQ(ai->ai_canonname, config.expectedCanonname);
+        EXPECT_THAT(ToStrings(result), testing::ElementsAreArray(config.expectedAddresses));
+        for (const auto* ai = result.get(); ai != nullptr; ai = ai->ai_next) {
+            EXPECT_STREQ(ai->ai_canonname, config.expectedCanonname);
+        }
     }
 }
 
@@ -3302,7 +3303,7 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryUnspecifiedNoV6) {
     EXPECT_EQ(2U, GetNumQueries(dns, host_name));
 
     // Synthesize AAAA if there's no AAAA answer and AF_UNSPEC is specified.
-    EXPECT_EQ(ToString(result), "64:ff9b::102:304");
+    EXPECT_THAT(ToStrings(result), testing::ElementsAre("64:ff9b::102:304", "1.2.3.4"));
 }
 
 TEST_F(ResolverTest, GetAddrInfo_Dns64QuerySpecialUseIPv4Addresses) {
@@ -3401,7 +3402,8 @@ TEST_F(ResolverTest, GetAddrInfo_Dns64QueryWithNullArgumentHints) {
     ScopedAddrinfo result = safe_getaddrinfo("v4only", nullptr, nullptr);
     EXPECT_TRUE(result != nullptr);
     EXPECT_LE(2U, GetNumQueries(dns, host_name));
-    EXPECT_EQ(ToString(result), "64:ff9b::102:304");
+    EXPECT_THAT(ToStrings(result),
+                testing::ElementsAre("64:ff9b::102:304", "64:ff9b::102:304", "1.2.3.4", "1.2.3.4"));
     dns.clearQueries();
 
     // Do not synthesize AAAA if there's at least one AAAA answer.
